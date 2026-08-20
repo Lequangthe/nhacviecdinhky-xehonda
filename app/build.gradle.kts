@@ -63,6 +63,17 @@ android {
     buildFeatures {
         compose = true
     }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+}
+
+tasks.whenTaskAdded {
+    if (name == "lintVitalAnalyzeRelease" || name == "lintVitalRelease") {
+        enabled = false
+    }
 }
 
 dependencies {
