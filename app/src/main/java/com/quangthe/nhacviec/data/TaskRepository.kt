@@ -6,32 +6,65 @@ package com.quangthe.nhacviec.data
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-class TaskRepository(private val dao: TaskDao) {
+class TaskRepository(
+    private val taskDao: TaskDao,
+    private val vehicleDao: VehicleDao,
+    private val mileageLogDao: MileageLogDao
+) {
 
-    val allTasks: Flow<List<Task>> = dao.getAllTasks()
+    val allTasks: Flow<List<Task>> = taskDao.getAllTasks()
         .map { list -> list.sortedWith(compareBy({ it.sortPriority() }, { it.effectiveDueAt })) }
 
-    suspend fun markDone(task: Task, doneAtMillis: Long = System.currentTimeMillis()) {
-        dao.update(task.copy(lastDoneAt = doneAtMillis, snoozedUntil = 0L))
+    val allVehicles: Flow<List<Vehicle>> = vehicleDao.getAllVehicles()
+
+    suspend fun markDone(task: Task, doneAtMillis: Long = System.currentTimeMillis(), doneKm: Int = 0) {
+        taskDao.update(task.copy(lastDoneAt = doneAtMillis, lastDoneAtKm = doneKm, snoozedUntil = 0L))
     }
 
+    suspend fun updateVehicleMileage(vehicleId: Int, mileage: Int, imagePath: String? = null) {
+        val vehicle = vehicleDao.getById(vehicleId) ?: return
+        if (mileage > vehicle.currentMileage) {
+            vehicleDao.update(vehicle.copy(currentMileage = mileage, lastMileageUpdate = System.currentTimeMillis()))
+            mileageLogDao.insert(MileageLog(vehicleId = vehicleId, mileage = mileage, imagePath = imagePath))
+        }
+    }
+
+    suspend fun resetAllTasksForVehicle(vehicleId: Int, currentMileage: Int) {
+        val tasks = taskDao.getAllTasksOnce().filter { it.vehicleId == vehicleId }
+        val now = System.currentTimeMillis()
+        tasks.forEach { task ->
+            taskDao.update(task.copy(lastDoneAt = now, lastDoneAtKm = currentMileage, snoozedUntil = 0L))
+        }
+    }
+
+    suspend fun getVehicleById(id: Int): Vehicle? = vehicleDao.getById(id)
+    suspend fun insertVehicle(vehicle: Vehicle): Long = vehicleDao.insert(vehicle)
+    suspend fun updateVehicle(vehicle: Vehicle) = vehicleDao.update(vehicle)
+    suspend fun deleteVehicle(vehicle: Vehicle) = vehicleDao.delete(vehicle)
+
+    suspend fun getMileageLogs(vehicleId: Int): Flow<List<MileageLog>> = mileageLogDao.getLogsForVehicle(vehicleId)
+
     suspend fun snooze(task: Task, days: Int) {
-        dao.update(task.copy(snoozedUntil = System.currentTimeMillis() + days * 86_400_000L))
+        taskDao.update(task.copy(snoozedUntil = System.currentTimeMillis() + days * 86_400_000L))
     }
 
     suspend fun snoozeUntil(task: Task, dateMillis: Long) {
-        dao.update(task.copy(snoozedUntil = dateMillis))
+        taskDao.update(task.copy(snoozedUntil = dateMillis))
     }
 
     suspend fun deleteStaleOneShotTasks() {
-        dao.deleteStaleOneShotTasks(System.currentTimeMillis() - 7 * 86_400_000L)
+        taskDao.deleteStaleOneShotTasks(System.currentTimeMillis() - 7 * 86_400_000L)
     }
 
-    suspend fun getById(id: Int): Task? = dao.getById(id)
-    suspend fun update(task: Task)  = dao.update(task)
-    suspend fun insert(task: Task): Long = dao.insert(task)
-    suspend fun delete(task: Task)  = dao.delete(task)
-    suspend fun deleteAll()         = dao.deleteAll()
+    suspend fun getById(id: Int): Task? = taskDao.getById(id)
+    suspend fun update(task: Task)  = taskDao.update(task)
+    suspend fun insert(task: Task): Long = taskDao.insert(task)
+    suspend fun delete(task: Task)  = taskDao.delete(task)
+    suspend fun deleteAll()         {
+        taskDao.deleteAll()
+        vehicleDao.deleteAll()
+        mileageLogDao.deleteAll()
+    }
 }
 
 // Priorité de tri :

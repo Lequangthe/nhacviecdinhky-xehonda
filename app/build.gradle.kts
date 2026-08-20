@@ -102,6 +102,9 @@ dependencies {
     // QR code generation
     implementation("com.google.zxing:core:3.5.3")
 
+    // Image loading
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

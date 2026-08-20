@@ -81,6 +81,10 @@
     <string name="form_recurrence_oneshot">One-off</string>
     <string name="form_interval_label">Interval</string>
     <string name="form_interval_unit">days</string>
+    <string name="form_interval_km_unit">km</string>
+    <string name="form_interval_km_label">Distance interval</string>
+    <string name="form_last_done_km_label">Last done at (km)</string>
+    <string name="form_vehicle_label">Vehicle</string>
     <string name="form_oneshot_someday">Someday</string>
     <string name="form_oneshot_fixed_date">Fixed date</string>
     <string name="form_due_date_label">Due date</string>
@@ -90,6 +94,7 @@
     <string name="form_delete_message">Permanently delete \"%s\"?</string>
     <string name="form_discard_title">Leave without saving?</string>
     <string name="form_discard_message">Your unsaved changes will be lost.</string>
+    <string name="form_event_only_hint">No interval set. This will be a one-time event log.</string>
     <string name="btn_discard">Leave</string>
 
     <!-- Content descriptions -->
@@ -124,6 +129,7 @@
     <!-- Task status subtitles -->
     <string name="status_paused">Paused</string>
     <string name="status_someday">Someday</string>
+    <string name="status_event_done">Done on %s</string>
     <string name="status_done_days">Done · deletes in %d days</string>
     <string name="status_done_tomorrow">Done · deletes tomorrow</string>
     <string name="status_done_today">Done · deletes today</string>
@@ -134,10 +140,13 @@
     <string name="status_today">Due today · %1$s</string>
     <string name="status_tomorrow">Tomorrow · %1$s</string>
     <string name="status_in_days">In %1$d days · %2$s</string>
+    <string name="status_km_remaining">%d km left</string>
+    <string name="status_km_overdue">%d km overdue</string>
 
     <!-- Recurrence labels (task card 3rd line) -->
     <string name="rec_every_day">Every day</string>
     <string name="rec_every_n_days">Every %d days</string>
+    <string name="rec_every_n_km">Every %d km</string>
     <string name="rec_weekly">Every week</string>
     <string name="rec_weekly_days">Weekly · %s</string>
     <string name="rec_monthly">Every month</string>
@@ -219,4 +228,19 @@
     <string name="widget_today">Today · %s</string>
     <string name="widget_tomorrow">Tomorrow · %s</string>
     <string name="widget_in_days">In %1$d days · %2$s</string>
+
+    <!-- Vehicle Management -->
+    <string name="vehicle_title">Vehicles</string>
+    <string name="vehicle_name_hint">Vehicle name (e.g. My Motorbike)</string>
+    <string name="vehicle_mileage_label">Current mileage</string>
+    <string name="mileage_unit">km</string>
+    <string name="mileage_update_title">Update mileage</string>
+    <string name="vehicle_update_mileage">Update</string>
+    <string name="vehicle_reset_all">Reset all tasks</string>
+    <string name="vehicle_reset_confirm">Reset all maintenance cycles for this vehicle?</string>
+    <string name="vehicle_no_vehicles">No vehicles added</string>
+    <string name="vehicle_add_btn">Add vehicle</string>
+    <string name="vehicle_odometer_photo">Odometer photo</string>
+    <string name="vehicle_mileage_history">Mileage History</string>
+    <string name="vehicle_no_history">No mileage records yet</string>
 </resources>

@@ -81,6 +81,10 @@
     <string name="form_recurrence_oneshot">Một lần</string>
     <string name="form_interval_label">Khoảng cách</string>
     <string name="form_interval_unit">ngày</string>
+    <string name="form_interval_km_unit">km</string>
+    <string name="form_interval_km_label">Khoảng cách km</string>
+    <string name="form_last_done_km_label">Lần cuối làm lúc (km)</string>
+    <string name="form_vehicle_label">Phương tiện</string>
     <string name="form_oneshot_someday">Một ngày nào đó</string>
     <string name="form_oneshot_fixed_date">Ngày cụ thể</string>
     <string name="form_due_date_label">Hạn chót</string>
@@ -90,6 +94,7 @@
     <string name="form_delete_message">Xóa vĩnh viễn \"%s\"?</string>
     <string name="form_discard_title">Thoát mà không lưu?</string>
     <string name="form_discard_message">Các thay đổi chưa lưu sẽ bị mất.</string>
+    <string name="form_event_only_hint">Bạn không đặt chu kỳ. Bạn chỉ muốn đánh dấu sự kiện thôi phải không?</string>
     <string name="btn_discard">Thoát</string>
 
     <!-- Content descriptions -->
@@ -124,6 +129,7 @@
     <!-- Task status subtitles -->
     <string name="status_paused">Đã tạm dừng</string>
     <string name="status_someday">Một ngày nào đó</string>
+    <string name="status_event_done">Hoàn thành vào %s</string>
     <string name="status_done_days">Xong · xóa sau %d ngày</string>
     <string name="status_done_tomorrow">Xong · xóa vào ngày mai</string>
     <string name="status_done_today">Xong · xóa vào hôm nay</string>
@@ -134,10 +140,13 @@
     <string name="status_today">Hạn hôm nay · %1$s</string>
     <string name="status_tomorrow">Ngày mai · %1$s</string>
     <string name="status_in_days">Sau %1$d ngày · %2$s</string>
+    <string name="status_km_remaining">Còn %d km</string>
+    <string name="status_km_overdue">Quá hạn %d km</string>
 
     <!-- Recurrence labels (task card 3rd line) -->
     <string name="rec_every_day">Mỗi ngày</string>
     <string name="rec_every_n_days">Mỗi %d ngày</string>
+    <string name="rec_every_n_km">Mỗi %d km</string>
     <string name="rec_weekly">Mỗi tuần</string>
     <string name="rec_weekly_days">Hàng tuần · %s</string>
     <string name="rec_monthly">Mỗi tháng</string>
@@ -219,4 +228,19 @@
     <string name="widget_today">Hôm nay · %s</string>
     <string name="widget_tomorrow">Ngày mai · %s</string>
     <string name="widget_in_days">Sau %1$d ngày · %2$s</string>
+
+    <!-- Vehicle Management -->
+    <string name="vehicle_title">Phương tiện</string>
+    <string name="vehicle_name_hint">Tên xe (vd: Xe Honda)</string>
+    <string name="vehicle_mileage_label">Số km hiện tại</string>
+    <string name="mileage_unit">km</string>
+    <string name="mileage_update_title">Cập nhật số km</string>
+    <string name="vehicle_update_mileage">Cập nhật</string>
+    <string name="vehicle_reset_all">Đặt lại tất cả</string>
+    <string name="vehicle_reset_confirm">Đặt lại tất cả chu kỳ bảo trì cho xe này?</string>
+    <string name="vehicle_no_vehicles">Chưa có phương tiện nào</string>
+    <string name="vehicle_add_btn">Thêm phương tiện</string>
+    <string name="vehicle_odometer_photo">Ảnh công tơ mét</string>
+    <string name="vehicle_mileage_history">Lịch sử số km</string>
+    <string name="vehicle_no_history">Chưa có dữ liệu số km</string>
 </resources>

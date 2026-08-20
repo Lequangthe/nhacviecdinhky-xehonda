@@ -27,7 +27,10 @@ data class Task(
     @ColumnInfo(defaultValue = "0")    val monthDays: Int         = 0,
     @ColumnInfo(defaultValue = "0")    val isDisabled: Boolean    = false,
     // ONE_SHOT ngày cố định (0 = một ngày nào đó, >0 = ngày đến hạn)
-    @ColumnInfo(defaultValue = "0")    val targetDate: Long       = 0L
+    @ColumnInfo(defaultValue = "0")    val targetDate: Long       = 0L,
+    @ColumnInfo(defaultValue = "NULL") val vehicleId: Int?        = null,
+    @ColumnInfo(defaultValue = "0")    val intervalKm: Int        = 0,
+    @ColumnInfo(defaultValue = "0")    val lastDoneAtKm: Int      = 0
 )
 
 // Tác vụ một lần được đánh dấu là xong (lastDoneAt > 0 có nghĩa là "xong")
@@ -127,9 +130,23 @@ fun Task.recurrenceLabel(context: Context): String? = when {
     else -> null
 }
 
+fun Task.kmRemaining(currentMileage: Int): Int {
+    if (intervalKm <= 0) return Int.MAX_VALUE
+    return intervalKm - (currentMileage - lastDoneAtKm)
+}
+
+fun Task.kmStatusLabel(context: Context, currentMileage: Int): String? {
+    if (intervalKm <= 0) return null
+    val remaining = kmRemaining(currentMileage)
+    return if (remaining < 0) context.getString(R.string.status_km_overdue, -remaining)
+    else context.getString(R.string.status_km_remaining, remaining)
+}
+
 // Nhãn trạng thái (đến hạn) — được chia sẻ giữa TaskCard và trang hành động
-fun Task.statusLabel(context: Context): String {
+fun Task.statusLabel(context: Context, currentMileage: Int = 0): String {
     val days = daysRemaining
+    val kmLabel = kmStatusLabel(context, currentMileage)
+    
     val dueDateLabel: String = run {
         if (isOneShotDone || (recurrenceType == "ONE_SHOT" && targetDate == 0L)) return@run ""
         val cal = Calendar.getInstance().apply { timeInMillis = effectiveDueAt }
@@ -143,11 +160,21 @@ fun Task.statusLabel(context: Context): String {
     return when {
         isDisabled    -> context.getString(R.string.status_paused)
         isOneShotDone -> {
-            val daysLeft = (7 - ((System.currentTimeMillis() - lastDoneAt) / 86_400_000L).toInt()).coerceAtLeast(0)
-            when {
-                daysLeft > 1  -> context.getString(R.string.status_done_days, daysLeft)
-                daysLeft == 1 -> context.getString(R.string.status_done_tomorrow)
-                else          -> context.getString(R.string.status_done_today)
+            if (targetDate == 0L) {
+                val cal = Calendar.getInstance().apply { timeInMillis = lastDoneAt }
+                val today = Calendar.getInstance()
+                val fmt = if (cal.get(Calendar.YEAR) == today.get(Calendar.YEAR))
+                    SimpleDateFormat("d MMM", Locale.getDefault())
+                else
+                    SimpleDateFormat("d MMM yyyy", Locale.getDefault())
+                context.getString(R.string.status_event_done, fmt.format(cal.time))
+            } else {
+                val daysLeft = (7 - ((System.currentTimeMillis() - lastDoneAt) / 86_400_000L).toInt()).coerceAtLeast(0)
+                when {
+                    daysLeft > 1 -> context.getString(R.string.status_done_days, daysLeft)
+                    daysLeft == 1 -> context.getString(R.string.status_done_tomorrow)
+                    else -> context.getString(R.string.status_done_today)
+                }
             }
         }
         recurrenceType == "ONE_SHOT" && targetDate == 0L -> context.getString(R.string.status_someday)
@@ -158,5 +185,9 @@ fun Task.statusLabel(context: Context): String {
         days == 0  -> context.getString(R.string.status_today, dueDateLabel)
         days == 1  -> context.getString(R.string.status_tomorrow, dueDateLabel)
         else       -> context.getString(R.string.status_in_days, days, dueDateLabel)
+    }.let { timeLabel ->
+        if (kmLabel != null) {
+            if (timeLabel.isEmpty()) kmLabel else "$timeLabel · $kmLabel"
+        } else timeLabel
     }
 }

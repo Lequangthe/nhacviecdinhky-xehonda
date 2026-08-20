@@ -75,8 +75,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.quangthe.nhacviec.R
 import com.quangthe.nhacviec.data.Task
+import com.quangthe.nhacviec.data.Vehicle
 import com.quangthe.nhacviec.viewmodel.TaskViewModel
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -145,6 +153,12 @@ private fun TaskFormContent(
         if (task == null || task.recurrenceType == "DAYS") task?.intervalDays?.toString() ?: ""
         else ""
     ) }
+    var intervalKmText by remember { mutableStateOf(task?.intervalKm?.takeIf { it > 0 }?.toString() ?: "") }
+    var lastDoneKmText by remember { mutableStateOf(task?.lastDoneAtKm?.takeIf { it > 0 }?.toString() ?: "") }
+    var vehicleId      by remember { mutableStateOf(task?.vehicleId) }
+    
+    val vehicles       by viewModel.vehicles.collectAsStateWithLifecycle()
+    
     var selectedIcon   by remember { mutableStateOf(task?.iconKey ?: "") }
     var note           by remember { mutableStateOf(task?.note ?: "") }
     var recurrenceType by remember { mutableStateOf(task?.recurrenceType ?: "DAYS") }
@@ -162,12 +176,14 @@ private fun TaskFormContent(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showHistory    by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
+    var showAddVehicle by remember { mutableStateOf(false) }
 
     // Le formulaire a-t-il été modifié par rapport à son état initial ?
     val initialLastDone = if (task == null || task.recurrenceType == "ONE_SHOT" || task.lastDoneAt == 0L)
         System.currentTimeMillis() else task.lastDoneAt
     val hasChanges = if (task == null) {
-        title.isNotBlank() || intervalText.isNotBlank() || selectedIcon.isNotEmpty() ||
+        title.isNotBlank() || intervalText.isNotBlank() || intervalKmText.isNotBlank() || 
+            lastDoneKmText.isNotBlank() || vehicleId != null || selectedIcon.isNotEmpty() ||
             note.isNotBlank() || recurrenceType != "DAYS" || weekDays != 0 || monthDays != 0 ||
             isDisabled || oneShotHasDate || targetDate != 0L || lastDoneDate != initialLastDone
     } else {
@@ -176,6 +192,9 @@ private fun TaskFormContent(
             monthDays != task.monthDays || isDisabled != task.isDisabled ||
             oneShotHasDate != (task.targetDate > 0L) || targetDate != task.targetDate ||
             (recurrenceType == "DAYS" && intervalText != task.intervalDays.toString()) ||
+            (recurrenceType == "DAYS" && intervalKmText != (task.intervalKm.takeIf { it > 0 }?.toString() ?: "")) ||
+            (recurrenceType == "DAYS" && lastDoneKmText != (task.lastDoneAtKm.takeIf { it > 0 }?.toString() ?: "")) ||
+            vehicleId != task.vehicleId ||
             (recurrenceType != "ONE_SHOT" && lastDoneDate != initialLastDone)
     }
 
@@ -188,32 +207,41 @@ private fun TaskFormContent(
     BackHandler(enabled = hasChanges) { focusManager.clearFocus(); showDiscardConfirm = true }
 
     val isValid = title.isNotBlank() && selectedIcon.isNotBlank() && when (recurrenceType) {
-        "DAYS"     -> intervalText.toIntOrNull()?.let { it > 0 } == true
+        "DAYS"     -> true // Có thể bỏ qua cả 2, nhưng isValid vẫn true để cho phép lưu "Event"
         "WEEKLY"   -> weekDays != 0
         "MONTHLY"  -> monthDays != 0
         "ONE_SHOT" -> !oneShotHasDate || targetDate > 0L
         else       -> false
     }
+    
+    val isEventOnly = recurrenceType == "DAYS" && intervalText.isBlank() && intervalKmText.isBlank()
 
     val onSave: () -> Unit = {
         val days = when (recurrenceType) {
             "WEEKLY"   -> 7
             "MONTHLY"  -> 30
             "ONE_SHOT" -> 0
-            else       -> intervalText.toInt()
+            else       -> intervalText.toIntOrNull() ?: 0
         }
+        val km = intervalKmText.toIntOrNull() ?: 0
+        val lastKm = lastDoneKmText.toIntOrNull() ?: 0
+        val finalRecurrenceType = if (isEventOnly) "ONE_SHOT" else recurrenceType
+        val finalTargetDate = if (isEventOnly) 0L else targetDate
+
         if (task == null) {
             viewModel.addTask(
                 title.trim(), days, selectedIcon, note.trim(),
-                recurrenceType, weekDays, monthDays, isDisabled, targetDate,
-                lastDoneAtMillis = if (recurrenceType == "ONE_SHOT") System.currentTimeMillis() else lastDoneDate
+                finalRecurrenceType, weekDays, monthDays, isDisabled, finalTargetDate,
+                lastDoneAtMillis = if (finalRecurrenceType == "ONE_SHOT") System.currentTimeMillis() else lastDoneDate,
+                vehicleId = vehicleId, intervalKm = km, lastDoneAtKm = lastKm
             )
         } else {
             viewModel.updateTask(task.copy(
                 title = title.trim(), intervalDays = days, iconKey = selectedIcon, note = note.trim(),
-                recurrenceType = recurrenceType, weekDays = weekDays, monthDays = monthDays,
-                isDisabled = isDisabled, targetDate = targetDate,
-                lastDoneAt = if (recurrenceType == "ONE_SHOT") task.lastDoneAt else lastDoneDate
+                recurrenceType = finalRecurrenceType, weekDays = weekDays, monthDays = monthDays,
+                isDisabled = isDisabled, targetDate = finalTargetDate,
+                lastDoneAt = if (finalRecurrenceType == "ONE_SHOT") task.lastDoneAt else lastDoneDate,
+                vehicleId = vehicleId, intervalKm = km, lastDoneAtKm = lastKm
             ))
         }
         dismissAndBack()
@@ -341,6 +369,44 @@ private fun TaskFormContent(
             }
         )
     }
+    
+    if (showAddVehicle) {
+        var newVehicleName by remember { mutableStateOf("") }
+        var newVehicleKm by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddVehicle = false },
+            title = { Text(stringResource(R.string.vehicle_add_btn)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newVehicleName, onValueChange = { newVehicleName = it },
+                        label = { Text(stringResource(R.string.vehicle_name_hint)) },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = newVehicleKm, onValueChange = { if (it.all(Char::isDigit)) newVehicleKm = it },
+                        label = { Text(stringResource(R.string.vehicle_mileage_label)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newVehicleName.isNotBlank()) {
+                            viewModel.addVehicle(newVehicleName, newVehicleKm.toIntOrNull() ?: 0)
+                            showAddVehicle = false
+                        }
+                    },
+                    enabled = newVehicleName.isNotBlank()
+                ) { Text(stringResource(R.string.btn_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddVehicle = false }) { Text(stringResource(R.string.btn_cancel)) }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -397,6 +463,51 @@ private fun TaskFormContent(
                 modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4
             )
 
+            // ── Vehicle ─────────────────────────────────────────────────
+            Text(stringResource(R.string.form_vehicle_label), style = MaterialTheme.typography.labelMedium)
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                    .padding(8.dp)
+            ) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    FilterChip(
+                        selected = vehicleId == null,
+                        onClick = { vehicleId = null },
+                        label = { Text(stringResource(R.string.filter_all)) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
+                    vehicles.forEach { vehicle ->
+                        FilterChip(
+                            selected = vehicleId == vehicle.id,
+                            onClick = { vehicleId = vehicle.id },
+                            label = { Text(vehicle.name) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        )
+                    }
+                    IconButton(
+                        onClick = { showAddVehicle = true },
+                        modifier = Modifier.size(32.dp).align(Alignment.CenterVertically)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+
             // ── Récurrence ──────────────────────────────────────────────
             Text(stringResource(R.string.form_recurrence_label), style = MaterialTheme.typography.labelMedium)
 
@@ -442,20 +553,59 @@ private fun TaskFormContent(
 
             when (recurrenceType) {
                 "DAYS" -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = intervalText,
-                            onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) intervalText = it },
-                            label = { Text(stringResource(R.string.form_interval_label)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true, modifier = Modifier.weight(1f)
-                        )
-                        Text(stringResource(R.string.form_interval_unit),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = intervalText,
+                                onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) intervalText = it },
+                                label = { Text(stringResource(R.string.form_interval_label)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true, modifier = Modifier.weight(1f)
+                            )
+                            Text(stringResource(R.string.form_interval_unit),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = intervalKmText,
+                                onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) intervalKmText = it },
+                                label = { Text(stringResource(R.string.form_interval_km_label)) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true, modifier = Modifier.weight(1f)
+                            )
+                            Text(stringResource(R.string.form_interval_km_unit),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        
+                        if (isEventOnly) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Text(
+                                        stringResource(R.string.form_event_only_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 "WEEKLY" -> {
@@ -551,16 +701,28 @@ private fun TaskFormContent(
 
             // ── Lần cuối làm ─────────────────────────────────────────────
             if (recurrenceType != "ONE_SHOT") {
-                Text(stringResource(R.string.form_last_done_label), style = MaterialTheme.typography.labelMedium)
-                Box(modifier = Modifier.fillMaxWidth().clickable { showLastDonePicker = true }) {
-                    OutlinedTextField(
-                        value = formatDate(lastDoneDate),
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Box(modifier = Modifier.matchParentSize().clickable { showLastDonePicker = true })
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(stringResource(R.string.form_last_done_label), style = MaterialTheme.typography.labelMedium)
+                    Box(modifier = Modifier.fillMaxWidth().clickable { showLastDonePicker = true }) {
+                        OutlinedTextField(
+                            value = formatDate(lastDoneDate),
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = { Icon(Icons.Filled.DateRange, contentDescription = null) },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { showLastDonePicker = true })
+                    }
+
+                    if (recurrenceType == "DAYS") {
+                        OutlinedTextField(
+                            value = lastDoneKmText,
+                            onValueChange = { if (it.length <= 7 && it.all(Char::isDigit)) lastDoneKmText = it },
+                            label = { Text(stringResource(R.string.form_last_done_km_label)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true, modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
 

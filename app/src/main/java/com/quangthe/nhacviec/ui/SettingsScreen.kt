@@ -247,7 +247,9 @@ fun SettingsScreen(
                 onClick = {
                     scope.launch {
                         val history = viewModel.getAllHistoryOnce()
-                        exportJson = BackupManager.exportToJson(tasks ?: emptyList(), history)
+                        val vehicles = viewModel.getAllVehiclesOnce()
+                        val logs = viewModel.getAllMileageLogsOnce()
+                        exportJson = BackupManager.exportToJson(tasks ?: emptyList(), history, vehicles, logs)
                         val sdf = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault())
                         exportLauncher.launch("maintask_${sdf.format(Date())}.json")
                     }

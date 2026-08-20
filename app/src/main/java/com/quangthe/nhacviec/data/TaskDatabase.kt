@@ -10,11 +10,13 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Task::class, TaskHistory::class], version = 9, exportSchema = false)
+@Database(entities = [Task::class, TaskHistory::class, Vehicle::class, MileageLog::class], version = 10, exportSchema = false)
 abstract class TaskDatabase : RoomDatabase() {
 
     abstract fun taskDao(): TaskDao
     abstract fun taskHistoryDao(): TaskHistoryDao
+    abstract fun vehicleDao(): VehicleDao
+    abstract fun mileageLogDao(): MileageLogDao
 
     companion object {
         @Volatile
@@ -58,6 +60,33 @@ abstract class TaskDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS vehicles (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        currentMileage INTEGER NOT NULL DEFAULT 0,
+                        lastMileageUpdate INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS mileage_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        vehicleId INTEGER NOT NULL,
+                        mileage INTEGER NOT NULL,
+                        recordedAt INTEGER NOT NULL,
+                        imagePath TEXT
+                    )
+                """.trimIndent())
+                database.execSQL("ALTER TABLE tasks ADD COLUMN vehicleId INTEGER DEFAULT NULL")
+                database.execSQL("ALTER TABLE tasks ADD COLUMN intervalKm INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE tasks ADD COLUMN lastDoneAtKm INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE task_history ADD COLUMN doneKm INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE task_history ADD COLUMN imagePath TEXT DEFAULT NULL")
+            }
+        }
+
         fun getInstance(context: Context): TaskDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -67,7 +96,7 @@ abstract class TaskDatabase : RoomDatabase() {
                 )
                     // JAMAIS ajouter 4–8 ici — migrations explicites ci-dessus
                     .fallbackToDestructiveMigrationFrom(1, 2, 3)
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .build()
                     .also { INSTANCE = it }
             }

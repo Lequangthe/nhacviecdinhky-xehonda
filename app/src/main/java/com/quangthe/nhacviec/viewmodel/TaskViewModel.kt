@@ -7,10 +7,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.quangthe.nhacviec.backup.BackupManager
+import com.quangthe.nhacviec.data.MileageLog
 import com.quangthe.nhacviec.data.Task
 import com.quangthe.nhacviec.data.TaskDatabase
 import com.quangthe.nhacviec.data.TaskHistory
 import com.quangthe.nhacviec.data.TaskRepository
+import com.quangthe.nhacviec.data.Vehicle
 import com.quangthe.nhacviec.notification.NotificationHelper
 import com.quangthe.nhacviec.notification.NotificationScheduler
 import com.quangthe.nhacviec.widget.NhacviecWidget
@@ -27,13 +29,14 @@ import kotlinx.coroutines.launch
 data class UndoItem(
     val task: Task,
     val previousLastDoneAt: Long,
+    val previousLastDoneAtKm: Int = 0,
     val addedAt: Long = System.currentTimeMillis()
 )
 
 class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db          = TaskDatabase.getInstance(application)
-    private val repository  = TaskRepository(db.taskDao())
+    private val repository  = TaskRepository(db.taskDao(), db.vehicleDao(), db.mileageLogDao())
     private val historyDao  = db.taskHistoryDao()
 
     val tasks: StateFlow<List<Task>?> = repository.allTasks
@@ -41,6 +44,13 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             scope          = viewModelScope,
             started        = SharingStarted.WhileSubscribed(5_000),
             initialValue   = null
+        )
+
+    val vehicles: StateFlow<List<Vehicle>> = repository.allVehicles
+        .stateIn(
+            scope          = viewModelScope,
+            started        = SharingStarted.WhileSubscribed(5_000),
+            initialValue   = emptyList()
         )
 
     init {
@@ -56,6 +66,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun setCategoryFilter(iconKey: String?) { _selectedCategory.value = iconKey }
 
     fun historyForTask(taskId: Int): Flow<List<TaskHistory>> = historyDao.getForTask(taskId)
+    
+    fun historyForVehicle(vehicleId: Int): Flow<List<MileageLog>> = db.mileageLogDao().getLogsForVehicle(vehicleId)
 
     suspend fun getTaskById(id: Int): Task? = repository.getById(id)
 
@@ -63,14 +75,15 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val _undoItems = MutableStateFlow<List<UndoItem>>(emptyList())
     val undoItems: StateFlow<List<UndoItem>> = _undoItems.asStateFlow()
 
-    fun markDoneWithUndo(task: Task, doneAtMillis: Long = System.currentTimeMillis()) {
+    fun markDoneWithUndo(task: Task, doneAtMillis: Long = System.currentTimeMillis(), doneKm: Int = 0) {
         val prev = task.lastDoneAt
-        markDone(task, doneAtMillis)
-        _undoItems.value = listOf(UndoItem(task, prev)) + _undoItems.value
+        val prevKm = task.lastDoneAtKm
+        markDone(task, doneAtMillis, doneKm)
+        _undoItems.value = listOf(UndoItem(task, prev, prevKm)) + _undoItems.value
     }
 
     fun performUndo(item: UndoItem) {
-        undoMarkDone(item.task, item.previousLastDoneAt)
+        undoMarkDone(item.task, item.previousLastDoneAt, item.previousLastDoneAtKm)
         _undoItems.value = _undoItems.value - item
     }
 
@@ -78,13 +91,13 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         _undoItems.value = _undoItems.value - item
     }
 
-    fun markDone(task: Task, doneAtMillis: Long = System.currentTimeMillis()) {
+    fun markDone(task: Task, doneAtMillis: Long = System.currentTimeMillis(), doneKm: Int = 0) {
         viewModelScope.launch {
-            repository.markDone(task, doneAtMillis)
+            repository.markDone(task, doneAtMillis, doneKm)
             if (task.recurrenceType != "ONE_SHOT") {
-                historyDao.insert(TaskHistory(taskId = task.id, doneAt = doneAtMillis))
+                historyDao.insert(TaskHistory(taskId = task.id, doneAt = doneAtMillis, doneKm = doneKm))
                 historyDao.trimForTask(task.id, 6)
-                val updated = task.copy(lastDoneAt = doneAtMillis, snoozedUntil = 0L)
+                val updated = task.copy(lastDoneAt = doneAtMillis, lastDoneAtKm = doneKm, snoozedUntil = 0L)
                 NotificationScheduler.scheduleForTask(getApplication(), updated)
             } else {
                 NotificationScheduler.cancelForTask(getApplication(), task.id)
@@ -103,7 +116,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         monthDays: Int = 0,
         isDisabled: Boolean = false,
         targetDate: Long = 0L,
-        lastDoneAtMillis: Long = System.currentTimeMillis()
+        lastDoneAtMillis: Long = System.currentTimeMillis(),
+        vehicleId: Int? = null,
+        intervalKm: Int = 0,
+        lastDoneAtKm: Int = 0
     ) {
         viewModelScope.launch {
             val newTask = Task(
@@ -116,7 +132,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 weekDays       = weekDays,
                 monthDays      = monthDays,
                 isDisabled     = isDisabled,
-                targetDate     = targetDate
+                targetDate     = targetDate,
+                vehicleId      = vehicleId,
+                intervalKm     = intervalKm,
+                lastDoneAtKm   = lastDoneAtKm
             )
             val id = repository.insert(newTask)
             NotificationScheduler.scheduleForTask(getApplication(), newTask.copy(id = id.toInt()))
@@ -167,16 +186,28 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             val backup = BackupManager.importFromJson(json)
             repository.deleteAll()
             historyDao.deleteAll()
-            val idMap = mutableMapOf<Int, Int>() // originalId → newId
+
+            val vehicleIdMap = mutableMapOf<Int, Int>() // originalId -> newId
+            backup.vehicles.forEach { v ->
+                val newId = repository.insertVehicle(v.copy(id = 0)).toInt()
+                vehicleIdMap[v.id] = newId
+            }
+
+            val taskIdMap = mutableMapOf<Int, Int>() // originalId → newId
             backup.tasks.forEach { exportedTask ->
                 val originalId = exportedTask.id
-                val newId = repository.insert(exportedTask.copy(id = 0)).toInt()
-                if (originalId > 0) idMap[originalId] = newId
-                NotificationScheduler.scheduleForTask(getApplication(), exportedTask.copy(id = newId))
+                val newVehicleId = exportedTask.vehicleId?.let { vehicleIdMap[it] }
+                val newId = repository.insert(exportedTask.copy(id = 0, vehicleId = newVehicleId)).toInt()
+                if (originalId > 0) taskIdMap[originalId] = newId
+                NotificationScheduler.scheduleForTask(getApplication(), exportedTask.copy(id = newId, vehicleId = newVehicleId))
             }
             backup.history.forEach { entry ->
-                val newTaskId = idMap[entry.taskId] ?: return@forEach
+                val newTaskId = taskIdMap[entry.taskId] ?: return@forEach
                 historyDao.insert(entry.copy(taskId = newTaskId))
+            }
+            backup.mileageLogs.forEach { log ->
+                val newVehicleId = vehicleIdMap[log.vehicleId] ?: return@forEach
+                repository.updateVehicleMileage(newVehicleId, log.mileage, log.imagePath)
             }
             doUpdateWidget()
         }
@@ -190,14 +221,58 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun undoMarkDone(task: Task, previousLastDoneAt: Long) {
+    fun undoMarkDone(task: Task, previousLastDoneAt: Long, previousLastDoneAtKm: Int = 0) {
         viewModelScope.launch {
-            val restored = task.copy(lastDoneAt = previousLastDoneAt, snoozedUntil = 0L)
+            val restored = task.copy(
+                lastDoneAt = previousLastDoneAt,
+                lastDoneAtKm = previousLastDoneAtKm,
+                snoozedUntil = 0L
+            )
             repository.update(restored)
             if (task.recurrenceType != "ONE_SHOT") {
                 historyDao.deleteLatestForTask(task.id)
             }
             NotificationScheduler.scheduleForTask(getApplication(), restored)
+            doUpdateWidget()
+        }
+    }
+
+    // ── Vehicle & Mileage Management ─────────────────────────────────────────
+
+    suspend fun getVehicleById(id: Int): Vehicle? = repository.getVehicleById(id)
+
+    fun addVehicle(name: String, currentMileage: Int = 0) {
+        viewModelScope.launch {
+            repository.insertVehicle(Vehicle(name = name, currentMileage = currentMileage))
+        }
+    }
+
+    fun updateVehicle(vehicle: Vehicle) {
+        viewModelScope.launch {
+            repository.updateVehicle(vehicle)
+            doUpdateWidget()
+        }
+    }
+
+    fun deleteVehicle(vehicle: Vehicle) {
+        viewModelScope.launch {
+            repository.deleteVehicle(vehicle)
+            // Optionnel : mettre à null le vehicleId des tasks associées ?
+            // Pour l'instant on laisse Room gérer ou on le fait manuellement
+            doUpdateWidget()
+        }
+    }
+
+    fun updateMileage(vehicleId: Int, mileage: Int, imagePath: String? = null) {
+        viewModelScope.launch {
+            repository.updateVehicleMileage(vehicleId, mileage, imagePath)
+            doUpdateWidget()
+        }
+    }
+
+    fun resetVehicleTasks(vehicle: Vehicle) {
+        viewModelScope.launch {
+            repository.resetAllTasksForVehicle(vehicle.id, vehicle.currentMileage)
             doUpdateWidget()
         }
     }
@@ -210,6 +285,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     // Export helper: get all history for backup
     suspend fun getAllHistoryOnce(): List<TaskHistory> = historyDao.getAll()
+    suspend fun getAllVehiclesOnce(): List<Vehicle> = repository.allVehicles.first()
+    suspend fun getAllMileageLogsOnce(): List<MileageLog> = db.mileageLogDao().getAll()
 
     private suspend fun doUpdateWidget() {
         try {

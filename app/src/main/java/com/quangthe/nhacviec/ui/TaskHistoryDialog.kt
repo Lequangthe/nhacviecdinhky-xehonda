@@ -57,8 +57,9 @@ fun TaskHistoryDialog(
                             else
                                 SimpleDateFormat("d MMMM yyyy", Locale.getDefault())
                             val dateStr = fmt.format(Date(entry.doneAt))
+                            val kmStr = if (entry.doneKm > 0) " (${entry.doneKm} km)" else ""
                             Text(
-                                text = stringResource(R.string.history_done_on, dateStr),
+                                text = stringResource(R.string.history_done_on, dateStr) + kmStr,
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier
                                     .fillMaxWidth()

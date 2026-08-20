@@ -26,8 +26,8 @@ interface TaskDao {
     @Query("DELETE FROM tasks")
     suspend fun deleteAll()
 
-    // Supprime les ONE_SHOT terminés depuis plus de 7 jours
-    @Query("DELETE FROM tasks WHERE recurrenceType = 'ONE_SHOT' AND lastDoneAt > 0 AND lastDoneAt < :threshold")
+    // Supprime les ONE_SHOT terminés depuis plus de 7 jours (sauf les événements "Someday")
+    @Query("DELETE FROM tasks WHERE recurrenceType = 'ONE_SHOT' AND targetDate > 0 AND lastDoneAt > 0 AND lastDoneAt < :threshold")
     suspend fun deleteStaleOneShotTasks(threshold: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
